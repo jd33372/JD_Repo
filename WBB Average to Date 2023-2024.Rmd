@@ -1,0 +1,212 @@
+---
+title: "Average to Date 2023-2024"
+output: html_document
+date: "2024-11-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+```{r}
+Notre_WBB_2024 <- read.csv("C:/Users/james/Downloads/sportsref_download_2023_2024.csv")
+```
+
+Used 2023-2024 team stats from Basketball Reference 
+
+Visualizations of Moving Averages for key statistics using 2023-2024 season Data. Additionally, for each game it is determined whether the total of a given statistic in that game is within one standard deviation of the end of season average. 
+
+Created column with Moving Average using dplyr and zoo. Then used ggplot to graph moving average against the game totals. Then calculated mean and sd. By using the abs function we call all of the values in a given column then subtract the end of season average from each of the column values. Then this is set to find all the times where the final game total was less than one standard deviation from the end of year mean. Repeated process for each stat. 
+
+###2024 Moving Averages 
+
+```{r}
+library(dplyr)
+library(zoo)
+library(ggplot2)
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverage3ptMade = zoo::rollapply(X3P, width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+
+ggplot(Notre_WBB_2024, aes(x = Game)) + 
+  geom_line(aes(y = X3P, color = "Three-Pointers Made"), linewidth = 1) + 
+  geom_line(aes(y = MovingAverage3ptMade, color = "Moving Average"), linewidth = 1, linetype = "dashed") +   
+  labs(title = "Moving Average of Three-Pointers Made Per Game", 
+       x = "Game", 
+       y = "Three-Pointers Made", 
+       color = "Legend") + 
+  scale_color_manual(values = c("Three-Pointers Made" = "gold", "Moving Average" = "navyblue")) + 
+  theme_minimal()
+
+Avg_3ptMade <- mean(Notre_WBB_2024$X3P)
+sd_3ptMade <- sd(Notre_WBB_2024$X3P)
+abs(Notre_WBB_2024$X3P - Avg_3ptMade) < sd_3ptMade  
+```
+
+The criteria that determines when a stat levels off is when the game output is one standard deviation away from the season average for two consecutive games. When looking at 3 pointers made, games 4 and 5 have outputs less than 1 standard deviation away from the mean. This statistic levels off at around game 6 of the season.  
+
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverageFGpct = zoo::rollapply(FG., width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = FG., color = "Field Goal Percentage"), linewidth = 1) + 
+geom_line(aes(y = MovingAverageFGpct, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of Field Goal Percentage", 
+     x = "Game", 
+     y = "Field Goal Percentage",
+     color = "Legend") + 
+scale_color_manual(values = c("Field Goal Percentage" = "gold", "Moving Average" = "navyblue")) + 
+theme_minimal()
+
+Avg_FGpct <- mean(Notre_WBB_2024$FG.)
+SD_FGpct <- sd(Notre_WBB_2024$FG.)
+abs(Notre_WBB_2024$FG. - Avg_FGpct) < SD_FGpct
+```
+
+
+Field goal percentage levels off around game 11. Notre Dame appeared to get off to an uncharacteristic slow shooting start in the 2023-24 season.
+
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverageRebounds = zoo::rollapply(TRB, width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = TRB, color = "Rebounds"), linewidth = 1) + 
+geom_line(aes(y = MovingAverageRebounds, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of Rebounds Per Game", 
+     x = "Game", 
+     y = "Rebounds Per Game",
+     color = "Legend") +
+scale_color_manual(values = c("Rebounds" = "gold", "Moving Average" = "navyblue")) +
+theme_minimal()
+
+Avg_reb <- mean(Notre_WBB_2024$TRB)
+sd_reb <- sd(Notre_WBB_2024$TRB)
+abs(Notre_WBB_2024$TRB - Avg_reb) < sd_reb
+```
+
+Rebounds quickly level off at game 3 as the Moving average stays in between 34 and 40 throughout the majority of the season. 
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverageFTpct = zoo::rollapply(FT., width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = FT., color = "Free Throw Percentage"), linewidth = 1) + 
+geom_line(aes(y = MovingAverageFTpct, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of Free Throw Percentage", 
+     x = "Game", 
+     y = "Free Throw Percentage",
+     color = "Legend") + 
+scale_color_manual(values = c("Free Throw Percentage" = "gold", "Moving Average" = "navyblue")) +
+theme_minimal()
+
+Avg_FT <- mean(Notre_WBB_2024$FT.)
+sd_FT <- sd(Notre_WBB_2024$FT.)
+abs(Notre_WBB_2024$FT. - Avg_FT) < sd_FT
+```
+
+
+Free throw percentage levels off fast at game 3. Little deviation from mean.
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverage3Ppct = zoo::rollapply(X3P., width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = X3P., color = "3pt Percentage"), linewidth = 1) + 
+geom_line(aes(y = MovingAverage3Ppct, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of 3pt Percentage", 
+     x = "Game", 
+     y = "3pt Percentage",
+     color = "Legend") + 
+  scale_color_manual(values = c("3pt Percentage" = "gold", "Moving Average" = "navyblue")) +
+theme_minimal()
+
+avg_3ptPct <- mean(Notre_WBB_2024$X3P.)
+sd_3pt_pct <- sd(Notre_WBB_2024$X3P.)
+abs(Notre_WBB_2024$X3P. - avg_3ptPct ) < sd_3pt_pct
+```
+
+Three point percentage levels off at game 3.
+
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverageAST = zoo::rollapply(AST, width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = AST, color = "Assists"), linewidth = 1) + 
+geom_line(aes(y = MovingAverageAST, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of Assists Per Game", 
+     x = "Game", 
+     y = "Assists",
+     color = "Legend") + 
+scale_color_manual(values = c("Assists" = "gold", "Moving Average" = "navyblue")) +
+theme_minimal()
+
+Avg_Ast <- mean(Notre_WBB_2024$AST)
+Sd_Ast <- sd(Notre_WBB_2024$AST)
+abs(Notre_WBB_2024$AST - Avg_Ast) < Sd_Ast
+```
+
+According to our criteria Ast levels off in game 3 but after game 5 a downward trend begins lasting through the entire rest of the season. 
+
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAverageTOV = zoo::rollapply(TOV, width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = TOV, color = "Turnovers"), linewidth = 1) + 
+geom_line(aes(y = MovingAverageTOV, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of Turnovers Per Game", 
+     x = "Game", 
+     y = "Turnovers",
+     color = "Legend") + 
+scale_color_manual(values = c("Turnovers" = "gold", "Moving Average" = "navyblue")) +
+theme_minimal()
+
+TOV_Avg <- mean(Notre_WBB_2024$TOV)
+TOV_sd <- sd(Notre_WBB_2024$TOV)
+abs(Notre_WBB_2024$TOV - TOV_Avg) < TOV_sd
+
+```
+
+Levels off quickly at game 3. 
+
+```{r}
+Notre_WBB_2024 <- Notre_WBB_2024 %>%
+  mutate(MovingAveragePPG = zoo::rollapply(Tm, width = 35, FUN = mean, fill = NA, align = "right", partial = TRUE))
+
+ggplot(Notre_WBB_2024, aes(x = Game))+ 
+geom_line(aes(y = Tm, color = "Points Per Game"), linewidth = 1) + 
+geom_line(aes(y = MovingAveragePPG, color = "Moving Average"), linewidth = 1, linetype = "dashed") + 
+labs(title = "Moving Average of Points Per Game", 
+     x = "Game", 
+     y = "Points",
+     color = "Legend") + 
+scale_color_manual(values = c("Points Per Game" = "gold", "Moving Average" = "navyblue")) +
+theme_minimal()
+
+Avg_PPG <- mean(Notre_WBB_2024$Tm)
+SD_PPG <- sd(Notre_WBB_2024$Tm)
+abs(Notre_WBB_2024$Tm - Avg_PPG) < SD_PPG
+```
+
+Points per game levels off around game 8 of the season. Slight downward trend for the rest of the season following peak around games 5 and 6. 
+
+```{r}
+read.csv("C:/Users/james/OneDrive/Desktop/Average to Date folder/sportsref_download_2014_2015.csv")
+
+read.csv()
+```
+
