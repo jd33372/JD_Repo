@@ -1,0 +1,781 @@
+---
+title: "Final ML"
+output: html_document
+date: "2024-12-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+#Load in Data
+All_Star_Selection <- read.csv("C://Users/james/Downloads/All-Star Selections.csv")
+
+Player_Per_Game_Stats <- read.csv("C://Users/james/Downloads/Player Per Game.csv")
+
+All_NBA_Selections <- read.csv("C://Users/james/Downloads/End Of Season Teams.csv")
+
+Yearly_Awards <- read.csv("C://Users/james/Downloads/Player Award Shares.csv")
+
+HOF <- read.csv("C://Users/james/Downloads/Player Career Info.csv")
+
+NBA_Champions <- read.csv("C://Users/james/Downloads/NBA Finals and MVP.csv")
+```
+
+
+Clean & Organize the Data
+Remove Unwanted Columns From Each Dataset
+```{r}
+# Filter years to 1980-2024 for HOF
+HOF <- HOF[HOF$first_seas >= 1980, ]
+
+# Get rid of columns we don't want for All-Star data
+All_Star_Selection <- subset(All_Star_Selection, select = -c(team, lg, replaced))
+
+# Get rid of columns we don't want for Player Per Game Stats
+Player_Per_Game_Stats <- subset(Player_Per_Game_Stats, 
+                                select = -c(seas_id, player_id, birth_year, lg,
+                                            e_fg_percent))
+
+# Get rid of columns we don't want for All NBA Selections
+All_NBA_Selections <- subset(All_NBA_Selections, 
+                                select = c(season, type, number_tm,
+                                           player))
+
+# Get rid of columns we don't want for Yearly Awards & only show winners
+# remove clutch player of the year because it only recently existed
+Yearly_Awards <- subset(Yearly_Awards, 
+                                select = c(season, award, player, winner))
+
+Yearly_Awards <- Yearly_Awards[Yearly_Awards$winner == TRUE, ]
+
+Yearly_Awards <- Yearly_Awards[Yearly_Awards$award != "clutch_poy", ]
+
+# Get rid of columns we don't want for HOF & only show current Hall of Fame players
+HOF <- subset(HOF, select = c(player, num_seasons, hof))
+
+# Get rid of columns we don't want for NBA Champions
+NBA_Champions <- subset(NBA_Champions, select = c(Year, NBA.Champion))
+
+```
+#Change Data Layout & Cleanup Data
+
+
+# Change All NBA Selection awards layout 
+
+```{r}
+library(tidyverse)
+
+All_NBA_Selections <- All_NBA_Selections %>%
+  pivot_wider(names_from = type, values_from = number_tm)
+
+colnames(All_NBA_Selections)[which(names(All_NBA_Selections) == 
+                                     "All-Defense")] <- "All_Defense"
+colnames(All_NBA_Selections)[which(names(All_NBA_Selections) == 
+                                     "All-NBA")] <- "All_NBA"
+colnames(All_NBA_Selections)[which(names(All_NBA_Selections) == 
+                                     "All-Rookie")] <- "All_Rookie"
+
+All_NBA_Selections$'All_Defense' <- ifelse(!is.na(All_NBA_Selections$'All_Defense'),   paste(All_NBA_Selections$'All_Defense', "Team"), All_NBA_Selections$'All_Defense')
+
+All_NBA_Selections$'All_NBA' <- ifelse(!is.na(All_NBA_Selections$'All_NBA'),   paste(All_NBA_Selections$'All_NBA', "Team"), All_NBA_Selections$'All_NBA')
+
+All_NBA_Selections$'All_Rookie' <- ifelse(!is.na(All_NBA_Selections$'All_Rookie'),   paste(All_NBA_Selections$'All_Rookie', "Team"), All_NBA_Selections$'All_Rookie')
+
+# Change Yearly Awards layout
+Yearly_Awards <- Yearly_Awards %>%
+  pivot_wider(names_from = award, values_from = award, values_fill = NA,
+              values_fn = list(award = function(x) "Yes"))
+
+colnames(Yearly_Awards)[which(names(Yearly_Awards) == 
+                                     "nba mvp")] <- "mvp"
+colnames(Yearly_Awards)[which(names(Yearly_Awards) == 
+                                     "nba roy")] <- "roy"
+
+Yearly_Awards <- subset(Yearly_Awards, select = c(season, player, dpoy, mip,
+                                                  mvp, roy, smoy))
+
+# Add Yes column to NBA Champions & Add most recent champs
+NBA_Champions$tm <- NBA_Champions$NBA.Champion
+NBA_Champions$season <- NBA_Champions$Year
+NBA_Champions <- subset(NBA_Champions, select = c(season, tm))
+
+recent_champions <- data.frame(
+  season = c(2019, 2020, 2021, 2022, 2023, 2024),
+  tm = c("TOR", "LAL", "MIL", "GSW", "DEN", "BOS")
+)
+NBA_Champions <- rbind(NBA_Champions, recent_champions)
+
+NBA_Champions$NBA_Champion <- 'Yes'
+```
+
+
+Combine Datasets
+```{r}
+
+# Merge Player Per Game Stats & All_Star Selection as NBA Data 
+
+All_Star_Selection$all_star <- "Yes"
+NBA_Data <- merge(Player_Per_Game_Stats, All_Star_Selection,
+                  by = c("player", "season"), all.x = TRUE)
+
+# Merge All NBA Selections into NBA Data
+NBA_Data <- merge(NBA_Data, All_NBA_Selections, 
+                  by = c("season", "player"), all.x = TRUE)
+
+# Merge Yearly Awards into NBA Data
+NBA_Data <- merge(NBA_Data, Yearly_Awards, 
+                  by = c("season", "player"), all.x = TRUE)
+
+# Merge Champions into NBA Data
+NBA_Data <- merge(NBA_Data, NBA_Champions, 
+                  by = c("season", "tm"), all.x = TRUE)
+```
+
+Add Hall of Famer Accolades to HOF Dataset
+
+```{r}
+library(dplyr)
+
+#All Star Count (all_star)
+NBA_Data <- NBA_Data %>% mutate(all_star = ifelse(all_star == "Yes", 1, 0))
+all_star_count <- NBA_Data %>% 
+  filter(all_star == 1) %>% 
+  group_by(player) %>% 
+  summarise(all_star = n())
+HOF <- left_join(HOF, all_star_count, by = "player")
+HOF$all_star[is.na(HOF$all_star)] <- 0
+
+# Defensive Player of The Year Count (dpoy)
+NBA_Data <- NBA_Data %>% mutate(dpoy = ifelse(dpoy == "Yes", 1, 0))
+dpoy_count <- NBA_Data %>% 
+  filter(dpoy == 1) %>% 
+  group_by(player) %>% 
+  summarise(dpoy = n())
+HOF <- left_join(HOF, dpoy_count, by = "player")
+HOF$dpoy[is.na(HOF$dpoy)] <- 0
+
+# Most Improved Player Count (MIP)
+NBA_Data <- NBA_Data %>% mutate(mip = ifelse(mip == "Yes", 1, 0))
+mip_count <- NBA_Data %>% 
+  filter(mip == 1) %>% 
+  group_by(player) %>% 
+  summarise(mip = n())
+HOF <- left_join(HOF, mip_count, by = "player")
+HOF$mip[is.na(HOF$mip)] <- 0
+
+# Most Valuable Player Count (MVP)
+NBA_Data <- NBA_Data %>% mutate(mvp = ifelse(mvp == "Yes", 1, 0))
+mvp_count <- NBA_Data %>% 
+  filter(mvp == 1) %>% 
+  group_by(player) %>% 
+  summarise(mvp = n())
+HOF <- left_join(HOF, mvp_count, by = "player")
+HOF$mvp[is.na(HOF$mvp)] <- 0
+
+# Rookie of the Year Count (ROY)
+NBA_Data <- NBA_Data %>% mutate(roy = ifelse(roy == "Yes", 1, 0))
+roy_count <- NBA_Data %>% 
+  filter(roy == 1) %>% 
+  group_by(player) %>% 
+  summarise(roy = n())
+HOF <- left_join(HOF, roy_count, by = "player")
+HOF$roy[is.na(HOF$roy)] <- 0
+
+# Sixth Man of the Year Count (SMOY)
+NBA_Data <- NBA_Data %>% mutate(smoy = ifelse(smoy == "Yes", 1, 0))
+smoy_count <- NBA_Data %>% 
+  filter(smoy == 1) %>% 
+  group_by(player) %>% 
+  summarise(smoy = n())
+HOF <- left_join(HOF, smoy_count, by = "player")
+HOF$smoy[is.na(HOF$smoy)] <- 0
+
+# All Defense Team Count (All_Defense)
+All_Defense_Count <- NBA_Data %>%
+  filter(!is.na(All_Defense)) %>%
+  group_by(player) %>%
+  summarise(All_Defense = n())
+HOF <- left_join(HOF, All_Defense_Count, by = "player")
+HOF$All_Defense[is.na(HOF$All_Defense)] <- 0
+
+# All NBA Team Count (All_NBA)
+All_NBA_Count <- NBA_Data %>%
+  filter(!is.na(All_NBA)) %>%
+  group_by(player) %>%
+  summarise(All_NBA = n())
+HOF <- left_join(HOF, All_NBA_Count, by = "player")
+HOF$All_NBA[is.na(HOF$All_NBA)] <- 0
+
+# All Rookie Team Count (All_Rookie)
+All_Rookie_Count <- NBA_Data %>%
+  filter(!is.na(All_Rookie)) %>%
+  group_by(player) %>%
+  summarise(All_Rookie = n())
+HOF <- left_join(HOF, All_Rookie_Count, by = "player")
+HOF$All_Rookie[is.na(HOF$All_Rookie)] <- 0
+
+# Championship Count
+Championships_Count <- NBA_Data %>%
+  filter(!is.na(NBA_Champion)) %>%
+  group_by(player) %>%
+  summarise(NBA_Champion = n())
+HOF <- left_join(HOF, Championships_Count, by = "player")
+HOF$NBA_Champion[is.na(HOF$NBA_Champion)] <- 0
+```
+
+
+Fix Traded Players in Data
+
+```{r}
+NBA_Data$tm[which(NBA_Data$tm == "TOT")] <- "aaTOT"
+NBA_Data <- NBA_Data[order(NBA_Data$tm), ]
+
+
+id <- paste(NBA_Data$season, NBA_Data$player, sep = "")
+
+NBA_Data <- NBA_Data[!duplicated(id), ]
+```
+
+
+Fix Positions for Players with Multiple Listed
+```{r}
+NBA_Data$pos <- substr(NBA_Data$pos, 1, 2)
+```
+
+
+Narrow Datasets Down to Years 1980 - 2024
+This will reflect the creation of the 3 point line up to the present.
+
+# Filter years to 1980-2024 for Player Per Game Stats
+
+```{r}
+Current_Stats <- NBA_Data[NBA_Data$season >= 2025, ]
+Player_Per_Game_Stats <- NBA_Data[NBA_Data$season >= 1980 &
+                                           NBA_Data$season <= 2024, ]
+```
+
+Create a Scale to Make Stats Comparable Across Years
+
+```{r}
+#NBA_Data
+seasons <- unique(NBA_Data$season)
+Scaled_NBA_Data <- NBA_Data 
+for(i in 1:length(seasons)) {
+  Scaled_NBA_Data[which(NBA_Data$season == seasons[i]), 10:30 ] <- scale(Scaled_NBA_Data[which(NBA_Data$season == seasons[i]), 10:30])
+}
+
+# Current Data
+seasons <- unique(Current_Stats$season)
+Scaled_Current_Stats <- Current_Stats 
+for(i in 1:length(seasons)) {
+  Scaled_Current_Stats[which(Current_Stats$season == seasons[i]), 10:30 ] <- scale(Scaled_Current_Stats[which(Current_Stats$season == seasons[i]), 10:30])
+}
+```
+
+
+Min 65 games played
+
+```{r}
+Scaled_NBA_Data <- Scaled_NBA_Data[Scaled_NBA_Data$g >= 65, ]
+
+Scaled_Current_Stats <- Scaled_Current_Stats
+```
+
+Create Dataset for Conferences
+
+```{r}
+Western_Conf <- c('DAL', 'DEN', 'GSW', 'HOU', 'LAC', 'LAL', 'MEM', 'MIN', 
+                  'NOP', 'OKC', 'PHO', 'POR', 'SAC', 'SAS', 'UTA')
+
+Eastern_Conf <- c('ATL', 'BOS', 'BRK', 'CHO', 'CHI', 'CLE', 'DET', 'IND',
+                  'MIA', 'MIL', 'NYK', 'ORL', 'PHI', 'TOR', 'WAS')
+                  
+# Create a dataframe for the Eastern Conference
+eastern_df <- data.frame(tm = Eastern_Conf, Conference = "Eastern")
+
+# Create a dataframe for the Western Conference
+western_df <- data.frame(tm = Western_Conf, Conference = "Western")
+
+# Combine the two dataframes into one
+team_conference <- rbind(eastern_df, western_df)
+```
+
+Main Datasets
+```{r}
+head(NBA_Data) # All NBA Player Data
+
+head(HOF) # Hall of Fame Player Data
+```
+
+
+
+Variables
+NBA_Data Predictor Variables
+player - Player Name
+season - Season of stats
+pos - Player Position
+age - Players Age
+experience - How many years player has been in league
+g - Games Played
+gs - Games started
+mp_per_game - Mins per game
+fg_per_game - Field goals per game
+fga_per_game - Field goals attempted per game
+fg_percent - Field goal %
+x3p_per_game - 3 point shots made per game
+x3pa_per_game - 3 point shots attempted per game
+x3p_percent - 3 point %
+x2p_per_game - 2 point shots made per game
+x2pa_per_game - 2 point shots attempted per game
+x2p_percent - 2 point %
+ft_per_game - free throws made per game
+fta_per_game - free throws attempted per game
+ft_percent - free throw %
+orb_per_game - Offensive rebounds per game
+drb_per_game - defensive rebounds per game
+trb_per_game - Total rebounds per game
+ast_per_game - Assists per game
+stl_per_game - Steals per game
+blk_per_game - Blocks per game
+tov_per_game - turnovers per game
+pf_per_game - personal fouls per game
+pts_per_game - Pts per game
+all_star - Was player an all-star (Yes or No)
+All_Defense - Did player make all defense 1st or 2nd team
+All_NBA - did player make all nba 1st or 2nd team
+All_Rookie - did player make all rookie 1st or 2nd team
+dpoy - did player win defensive player of the year
+mip - did player win most improved player
+mvp - did player win most valuable player
+roy - did player win rookie of the year
+smoy - did player win sixth man of the year
+HOF Predictor Variables
+num_seasons - number of seasons a player played for
+all_star - number of all star appearances
+dpoy - number of defensive player of the year awards
+mip - number of most improved player awards
+mvp - number of most valuable player awards
+roy - number of rookie of the year awards (max 1)
+smoy - number of six man of the year awards
+All_Defense - number of all defensive team selections
+All_NBA - number of all NBA team selections
+All_Rookie - number of all rookie team selections (max 1)
+Variable Analysis
+
+```{r}
+library(ggplot2)
+
+# Player Position vs Points
+ggplot(NBA_Data, aes(x = pos, y = pts_per_game)) +
+  geom_boxplot() +
+  labs(title = "Player Position vs Points Per Game", x = "Position", 
+       y = "Points Per Game") +
+  theme_minimal()
+
+
+# Average Awards and All-Star Appearances for Hall of Famers
+library(dplyr)
+
+avg_awards <- HOF %>%
+  filter(hof == TRUE) %>%
+  summarise(
+    avg_num_seasons = mean(num_seasons, na.rm = TRUE),
+    avg_all_star = mean(all_star, na.rm = TRUE),
+    avg_dpoy = mean(dpoy, na.rm = TRUE),
+    avg_mip = mean(mip, na.rm = TRUE),
+    avg_mvp = mean(mvp, na.rm = TRUE),
+    avg_roy = mean(roy, na.rm = TRUE),
+    avg_smoy = mean(smoy, na.rm = TRUE),
+    avg_all_defense = mean(All_Defense, na.rm = TRUE),
+    avg_all_NBA = mean(All_NBA, na.rm = TRUE),
+    avg_all_Rookie = mean(All_Rookie, na.rm = TRUE)
+  )
+avg_awards_long <- avg_awards %>%
+  pivot_longer(cols = everything(), names_to = "Award", values_to = "Average")
+
+ggplot(avg_awards_long, aes(x = Award, y = Average, fill = Award)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Stats of Hall of Famers", x = "Stat", y = "Average Count") +
+  theme_minimal() +
+  coord_flip()+
+  theme(legend.position = "none")
+
+avg_all_star <- NBA_Data %>% 
+  filter(all_star == 1) %>%
+  summarise(
+    avg_ppg = mean(pts_per_game, na.rm = TRUE),
+    avg_trb = mean(trb_per_game, na.rm = TRUE),
+    avg_apg = mean(ast_per_game, na.rm = TRUE),
+    avg_spg = mean(stl_per_game, na.rm = TRUE),
+    avg_bpg = mean(blk_per_game, na.rm = TRUE),
+    avg_mpg = mean(mp_per_game, na.rm = TRUE)
+    )
+
+avg_allstar_long <- avg_all_star %>%
+  pivot_longer(cols = everything(), names_to = "Stat", values_to = "Average")
+
+ggplot(avg_allstar_long, aes(x = Stat, y = Average, fill = Stat)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Per Game Averages of All Stars", x = "Stat", y = "Average Count") +
+  theme_minimal() +
+  coord_flip()+
+  theme(legend.position = "none")
+
+
+```
+
+Split data into Test & Training Data
+
+# Normal Data
+set.seed(7)
+```{r}
+total_obs <- dim(Scaled_NBA_Data)[1]
+train_data_indices <- sample(1:total_obs, 0.6*total_obs)
+train_data <- Scaled_NBA_Data[train_data_indices,]
+test_data <- Scaled_NBA_Data[-train_data_indices,]
+
+# HOF Data
+set.seed(7)
+
+total_obs_HOF <- dim(HOF)[1]
+train_data_indices_HOF <- sample(1:total_obs_HOF, 0.6*total_obs_HOF)
+train_data_HOF <- HOF[train_data_indices_HOF,]
+test_data_HOF <- HOF[-train_data_indices_HOF,]
+```
+
+
+Models
+Logistic Regression
+
+```{r}
+library(caret)
+
+# All-Star Predictor Model
+train_data$all_star[is.na(train_data$all_star)] <- 0
+test_data$all_star[is.na(test_data$all_star)] <- 0
+
+lm_all_star <- glm(all_star ~ fg_per_game + fga_per_game + fg_percent +
+                     x3p_per_game + x3pa_per_game + x3p_percent +
+                     x2p_per_game + x2pa_per_game + x2p_percent +
+                     ft_per_game + fta_per_game + ft_percent +
+                     orb_per_game + drb_per_game + trb_per_game +
+                     ast_per_game + stl_per_game + blk_per_game + tov_per_game + pts_per_game, 
+                   family = 'binomial', data = train_data)
+
+lm_all_star_pred <- predict(lm_all_star, newdata = test_data, type = 'response')
+preds_all_star_cat <- ifelse(lm_all_star_pred>.5, 1, 0)
+lm_all_star_acc <- confusionMatrix(factor(preds_all_star_cat),
+                                   factor(test_data$all_star), positive = '1')
+
+# Yearly Awards Predictor Model 
+#MVP
+train_data$mvp[is.na(train_data$mvp)] <- 0
+test_data$mvp[is.na(test_data$mvp)] <- 0
+
+lm_MVP <- glm(mvp ~ fg_per_game + fga_per_game + fg_percent +
+                     x3p_per_game + x3pa_per_game + x3p_percent +
+                     x2p_per_game + x2pa_per_game + x2p_percent +
+                     ft_per_game + fta_per_game + ft_percent +
+                     orb_per_game + drb_per_game + trb_per_game +
+                     ast_per_game + stl_per_game + blk_per_game + tov_per_game + pts_per_game, 
+                   family = 'binomial', data = train_data)
+## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
+lm_MVP_pred <- predict(lm_MVP, newdata = test_data, type = 'response')
+preds_MVP_cat <- ifelse(lm_MVP_pred>.5, 1, 0)
+lm_MVP_acc <- confusionMatrix(factor(preds_MVP_cat),
+                                   factor(test_data$mvp), positive = '1')
+
+#DPOY
+train_data$dpoy[is.na(train_data$dpoy)] <- 0
+test_data$dpoy[is.na(test_data$dpoy)] <- 0
+
+lm_DPOY <- glm(dpoy ~ fg_per_game + fga_per_game + fg_percent +
+                     x3p_per_game + x3pa_per_game + x3p_percent +
+                     x2p_per_game + x2pa_per_game + x2p_percent +
+                     ft_per_game + fta_per_game + ft_percent +
+                     orb_per_game + drb_per_game + trb_per_game +
+                     ast_per_game + stl_per_game + blk_per_game + tov_per_game + pts_per_game, 
+                   family = 'binomial', data = train_data)
+
+lm_dpoy_pred <- predict(lm_DPOY, newdata = test_data, type = 'response')
+preds_dpoy_cat <- ifelse(lm_dpoy_pred>.5, 1, 0)
+lm_dpoy_acc <- confusionMatrix(factor(preds_dpoy_cat),
+                                   factor(test_data$dpoy), positive = '1')
+
+# Hall of Fame Predictor Model
+lm_HOF <- glm(hof ~ num_seasons + all_star + dpoy + mip + mvp + roy + smoy +
+                All_Defense + All_NBA + All_Rookie + NBA_Champion, 
+              family = 'binomial', data = train_data_HOF)
+
+lm_HOF_pred <- predict(lm_HOF, newdata = test_data_HOF, type = 'response')
+preds_HOF_cat <- ifelse(lm_HOF_pred>.5, 'TRUE', 'FALSE')
+lm_HOF_acc <- confusionMatrix(factor(preds_HOF_cat),
+                                   factor(test_data_HOF$hof), positive = 'TRUE')
+                                   
+```
+```{r}
+# All-Star Predictor Model
+library(xgboost)
+
+
+# Replace NAs in target columns with 0
+train_data$all_star[is.na(train_data$all_star)] <- 0
+test_data$all_star[is.na(test_data$all_star)] <- 0
+
+train_data$all_star <- as.numeric(train_data$all_star)
+test_data$all_star <- as.numeric(test_data$all_star)
+
+predictor_columns <- c(
+  "fg_per_game", "fga_per_game", "fg_percent",
+  "x3p_per_game", "x3pa_per_game", "x3p_percent",
+  "x2p_per_game", "x2pa_per_game", "x2p_percent",
+  "ft_per_game", "fta_per_game", "ft_percent",
+  "orb_per_game", "drb_per_game", "trb_per_game",
+  "ast_per_game", "stl_per_game", "blk_per_game",
+  "tov_per_game", "pts_per_game"
+)
+
+# Create training and test matrices
+X_train <- as.matrix(train_data[, predictor_columns])
+X_test <- as.matrix(test_data[, predictor_columns])
+
+#XGBoost All-Star
+y_train_all_star <- train_data$all_star
+y_test_all_star <- test_data$all_star
+
+# Train XGBoost model
+xgb_all_star <- xgboost(data = X_train, label = y_train_all_star, 
+                        nrounds = 100, objective = "binary:logistic", verbose = 0)
+
+# Predict on test set
+all_star_preds <- predict(xgb_all_star, X_test)
+all_star_preds_binary <- ifelse(all_star_preds > 0.5, 1, 0)
+
+# Evaluate model
+confusionMatrix(factor(all_star_preds_binary), factor(y_test_all_star), positive = "1")
+
+test_data$xgb_all_star_preds <- all_star_preds
+
+# Yearly Awards Predictor Model (MVP & DPOY)
+
+library(xgboost)
+library(caret)
+library(dplyr)
+
+# Replace NAs in target columns with 0
+train_data$mvp[is.na(train_data$mvp)] <- 0
+test_data$mvp[is.na(test_data$mvp)] <- 0
+
+train_data$dpoy[is.na(train_data$dpoy)] <- 0
+test_data$dpoy[is.na(test_data$dpoy)] <- 0
+
+# Convert target variables to numeric
+train_data$mvp <- as.numeric(train_data$mvp)
+test_data$mvp <- as.numeric(test_data$mvp)
+
+train_data$dpoy <- as.numeric(train_data$dpoy)
+test_data$dpoy <- as.numeric(test_data$dpoy)
+
+predictor_columns <- c(
+  "fg_per_game", "fga_per_game", "fg_percent",
+  "x3p_per_game", "x3pa_per_game", "x3p_percent",
+  "x2p_per_game", "x2pa_per_game", "x2p_percent",
+  "ft_per_game", "fta_per_game", "ft_percent",
+  "orb_per_game", "drb_per_game", "trb_per_game",
+  "ast_per_game", "stl_per_game", "blk_per_game",
+  "tov_per_game", "pts_per_game"
+)
+
+# Create training and test matrices
+X_train <- as.matrix(train_data[, predictor_columns])
+X_test <- as.matrix(test_data[, predictor_columns])
+
+
+#XGBoost MVP
+y_train_mvp <- train_data$mvp
+y_test_mvp <- test_data$mvp
+
+# Train XGBoost model
+xgb_mvp <- xgboost(data = X_train, label = y_train_mvp, 
+                   nrounds = 100, objective = "binary:logistic", verbose = 0)
+
+# Predict on test set
+mvp_preds <- predict(xgb_mvp, X_test)
+mvp_preds_binary <- ifelse(mvp_preds > 0.5, 1, 0)
+
+# Evaluate model
+confusionMatrix(factor(mvp_preds_binary), factor(y_test_mvp), positive = "1")
+
+test_data$xgb_mvp_preds <- mvp_preds
+
+#XGBoost DPOY
+y_train_dpoy <- train_data$dpoy
+y_test_dpoy <- test_data$dpoy
+
+# Train XGBoost model
+xgb_dpoy <- xgboost(data = X_train, label = y_train_dpoy, 
+                    nrounds = 100, objective = "binary:logistic", verbose = 0, scale_pos_weight = 4876/17,
+                    )
+
+
+x_test_2 <- Scaled_Current_Stats[,colnames(X_test)]
+dpoy_preds <- predict(xgb_dpoy, as.matrix(x_test_2))
+Scaled_Current_Stats$dpoy <- dpoy_preds
+# Predict on test set
+dpoy_preds <- predict(xgb_dpoy, X_test)
+dpoy_preds_binary <- ifelse(dpoy_preds > 0.5, 1, 0)
+
+# Evaluate model
+confusionMatrix(factor(dpoy_preds_binary), factor(y_test_dpoy), positive = "1")
+
+test_data$xgb_dpoy_preds <- dpoy_preds
+
+
+```
+
+XG Boost
+
+# Hall of Fame Predictor Model
+
+```{r}
+library(xgboost)
+library(Matrix)
+library(caret)
+
+train_data_HOF$hof <- ifelse(train_data_HOF$hof == TRUE, 1, 0)
+test_data_HOF$hof <- ifelse(test_data_HOF$hof == TRUE, 1, 0)
+
+# Select predictor variables
+predictors <- c("num_seasons", "all_star", "dpoy", "mip", "mvp", "roy", 
+                "smoy", "All_Defense", "All_NBA", "All_Rookie", "NBA_Champion")
+
+# Convert data to matrix format for XGBoost
+dtrain <- xgb.DMatrix(data = as.matrix(train_data_HOF[, predictors]), 
+                      label = train_data_HOF$hof)
+dtest <- xgb.DMatrix(data = as.matrix(test_data_HOF[, predictors]), 
+                     label = test_data_HOF$hof)
+
+# Set model parameters
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",  # Binary classification
+  eval_metric = "logloss",        # Log-loss for evaluation
+  max_depth = 6,                  # Maximum tree depth
+  eta = 0.1,                      # Learning rate
+  gamma = 0,                      # Minimum loss reduction to make a split
+  subsample = 0.8,                # Subsample ratio of training data
+  colsample_bytree = 0.8          # Subsample ratio of columns
+)
+
+# Train the XGBoost model
+set.seed(7)
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 100,  # Number of boosting rounds
+  watchlist = list(train = dtrain, test = dtest),
+  print_every_n = 10,
+  early_stopping_rounds = 10,  # Stop if no improvement in 10 rounds
+  maximize = FALSE,
+    scale_pos_weight = 1346/22,
+)
+
+xgb_predictions <- predict(xgb_model, dtest)
+xgb_predictions_class <- ifelse(xgb_predictions > 0.5, 1, 0)
+
+# Evaluate model accuracy
+conf_matrix <- confusionMatrix(
+  factor(xgb_predictions_class), 
+  factor(test_data_HOF$hof), 
+  positive = "1"
+)
+print(conf_matrix)
+
+
+test_data_HOF$xgb_predictions <- xgb_predictions
+
+#Final Predictions
+# All Star Final Prediction
+x_test_1 <- Scaled_Current_Stats[,colnames(X_test)]
+all_star_preds <- predict(xgb_all_star, as.matrix(x_test_2))
+Scaled_Current_Stats$all_star <- all_star_preds
+
+Scaled_Current_Stats <- merge(Scaled_Current_Stats, team_conference, by = "tm", all.x = TRUE)
+
+# MVP Final Prediction
+x_test_2 <- Scaled_Current_Stats[,colnames(X_test)]
+mvp_preds <- predict(xgb_mvp, as.matrix(x_test_2))
+Scaled_Current_Stats$mvp <- mvp_preds
+
+# DPOY Final Prediction
+x_test_3 <- Scaled_Current_Stats[,colnames(X_test)]
+dpoy_preds <- predict(xgb_dpoy, as.matrix(x_test_2))
+Scaled_Current_Stats$dpoy <- dpoy_preds
+
+# HOF Final Prediction
+test_data_HOF$xgb_predictions <- xgb_predictions
+#Outcomes
+library(dplyr)
+# All-Star
+top_5_All_Stars <- Scaled_Current_Stats %>%
+  group_by(Conference) %>%
+  arrange(desc(all_star)) %>%
+  slice_head(n = 12)
+
+# MVP
+top_5_MVP <- Scaled_Current_Stats %>%
+  arrange(desc(mvp)) %>%
+  slice_head(n = 5)
+
+# DPOY
+top_5_DPOY <- Scaled_Current_Stats %>%
+  arrange(desc(dpoy)) %>%
+  slice_head(n = 5)
+
+# HOF
+top_5_HOF <- test_data_HOF %>%
+  filter(player %in% Scaled_Current_Stats$player)
+
+top_5_HOF <- top_5_HOF %>%
+  arrange(desc(xgb_predictions)) %>%
+  slice_head(n = 5)
+
+```
+
+```{r}
+# All-Star
+top_5_All_Stars <- Scaled_Current_Stats %>%
+  group_by(Conference) %>%
+  arrange(desc(all_star)) %>%
+  slice_head(n = 5)
+
+# MVP
+top_5_MVP <- Scaled_Current_Stats %>%
+  arrange(desc(mvp)) %>%
+  slice_head(n = 5)
+
+# DPOY
+top_5_DPOY <- Scaled_Current_Stats %>%
+  arrange(desc(dpoy)) %>%
+  slice_head(n = 5)
+
+# HOF
+top_5_HOF <- test_data_HOF %>%
+  filter(player %in% Scaled_Current_Stats$player)
+
+top_5_HOF <- top_5_HOF %>%
+  arrange(desc(xgb_predictions)) %>%
+  slice_head(n = 5)
+
+print(top_5_All_Stars)
+
+print(top_5_DPOY)
+
+print(top_5_HOF)
+
+print(top_5_MVP)
+```
+
