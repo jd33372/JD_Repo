@@ -1,1 +1,1 @@
-Sports Analytics Projects
+SQL Queries
